@@ -101,6 +101,14 @@ pip install tdc  # 可选，用于TDC数据集
 
 ### 1. 构建预训练数据
 
+#### 生成smiles.txt
+
+```bash
+python prepare
+```
+
+#### 生成symbol_dict等
+
 ```bash
 python main.py build_data \
     --smiles_file data/smiles.txt \
@@ -145,7 +153,27 @@ python main.py pretrain \
 
 ### 3. 下游任务微调
 
-#### 气味描述符预测
+#### 训练多标签模型
+
+```bash
+python main.py finetune \
+    --task multi_label_odor \
+    --csv_file data/Multi-Labelled_Smiles_Odors_dataset.csv \
+    --pretrain_model models/pretrain/best_model.pt \
+    --save_dir models/multi_label_odor \
+    --smiles_column nonStereoSMILES \
+    --min_label_frequency 5 \
+    --device cuda
+```
+
+可选参数：
+
+- `--pretrain_model`: 预训练模型路径
+- `--smiles_column`: SMILES列名（默认：nonStereoSMILES）
+- `--min_label_frequency`: 最小标签频次（默认：5）
+- `--max_smiles_length`: 最大SMILES长度（默认：200）
+
+#### （忽略）气味描述符预测
 
 ```bash
 python main.py finetune \
@@ -156,7 +184,7 @@ python main.py finetune \
     --odorless_file data/odorless.txt
 ```
 
-#### TDC数据集任务
+#### （忽略）TDC数据集任务
 
 ```bash
 python main.py finetune \

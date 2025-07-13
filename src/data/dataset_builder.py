@@ -18,6 +18,7 @@ from rdkit import Chem
 
 from .symbol_dictionary import SymbolDictionary
 from .smiles_processor import SMILESProcessor
+from .csv_processor import CSVProcessor
 from config.model_config import SPECIAL_TOKENS
 from config.data_config import DEFAULT_DATA_CONFIG, DEFAULT_TDC_CONFIG
 
@@ -182,6 +183,7 @@ class DatasetBuilder:
         self.smiles_processor = SMILESProcessor(
             self.config.limit_smiles_length)
         self.symbol_dict = SymbolDictionary()
+        self.csv_processor = CSVProcessor(self.smiles_processor)
 
     def build_pretrain_dataset(self, smiles_files: List[str],
                                max_samples: int = None) -> Tuple[List[str], SymbolDictionary]:
@@ -500,6 +502,63 @@ class DatasetBuilder:
         return (train_smiles_ids + test_smiles_ids,
                 train_labels + test_labels,
                 task_info)
+
+    def build_multi_label_odor_dataset(self, csv_path: str,
+                                       smiles_column: str = 'nonStereoSMILES',
+                                       descriptor_column: str = 'descriptors',
+                                       min_label_frequency: int = 5,
+                                       max_smiles_length: int = 200) -> Tuple[List[List[int]], List[List[float]], Dict]:
+        """构建多标签气味数据集（从CSV文件）
+
+        Args:
+            csv_path: CSV文件路径
+            smiles_column: SMILES列名
+            descriptor_column: 描述符列名（可选）
+            min_label_frequency: 最小标签频次
+            max_smiles_length: 最大SMILES长度
+
+        Returns:
+            Tuple: (SMILES_IDs, 标签, 任务信息)
+        """
+        print(f"构建多标签气味数据集: {csv_path}")
+
+        # 使用CSV处理器加载数据
+        smiles_list, labels_list, label_to_id, label_names = self.csv_processor.load_multi_label_csv(
+            csv_path, smiles_column, descriptor_column, min_label_frequency, max_smiles_length
+        )
+
+        # 转换SMILES为ID序列
+        print("转换SMILES为ID序列...")
+        smiles_ids = []
+        valid_labels = []
+
+        for i, smiles in enumerate(smiles_list):
+            try:
+                smiles_id = self.symbol_dict.smiles_to_ids(smiles)
+                smiles_ids.append(smiles_id)
+                valid_labels.append([float(x) for x in labels_list[i]])
+            except Exception as e:
+                print(f"处理SMILES失败: {smiles} - {e}")
+                continue
+
+        # 创建任务信息
+        task_info = {
+            'task_type': 'classification',
+            'num_labels': len(label_names),
+            'label_to_id': label_to_id,
+            'id_to_label': label_names,
+            'label_names': label_names,
+            'csv_path': csv_path,
+            'smiles_column': smiles_column,
+            'min_label_frequency': min_label_frequency
+        }
+
+        print(f"多标签气味数据集构建完成:")
+        print(f"  样本数量: {len(smiles_ids)}")
+        print(f"  标签数量: {len(label_names)}")
+        print(f"  符号字典大小: {self.symbol_dict.vocab_size}")
+
+        return smiles_ids, valid_labels, task_info
 
     def get_dataset_statistics(self, smiles_ids: List[List[int]],
                                labels: List[List[float]] = None) -> Dict[str, Any]:

@@ -51,6 +51,8 @@ class PropertyTrainer:
 
         # 初始化组件
         self.dataset_builder = DatasetBuilder()
+        self.dataset_builder.load_pretrain_data('./data/pretrain/')
+
         self.model = None
         self.optimizer = None
         self.scheduler = None
@@ -89,12 +91,6 @@ class PropertyTrainer:
             mode=monitor_mode
         )
 
-        # 打印模型信息
-        model_info = self.model.get_model_info()
-        print(f"模型信息:")
-        for key, value in model_info.items():
-            print(f"  {key}: {value}")
-
     def setup_optimizer(self):
         """设置优化器和学习率调度器"""
         # 分别设置不同部分的学习率
@@ -132,6 +128,20 @@ class PropertyTrainer:
             smiles_ids, labels, task_info = self.dataset_builder.build_odor_dataset(
                 self.data_config['odorant_file'],
                 self.data_config['odorless_file']
+            )
+        elif task_name == 'multi_label_odor' or 'csv_file' in self.data_config:
+            # 多标签气味数据集（从CSV文件）
+            csv_file = self.data_config.get(
+                'csv_file', 'data/Multi-Labelled_Smiles_Odors_dataset.csv')
+            smiles_column = self.data_config.get(
+                'smiles_column', 'nonStereoSMILES')
+            descriptor_column = self.data_config.get(
+                'descriptor_column', 'descriptors')
+            min_label_frequency = self.data_config.get(
+                'min_label_frequency', 5)
+            max_smiles_length = self.data_config.get('max_smiles_length', 200)
+            smiles_ids, labels, task_info = self.dataset_builder.build_multi_label_odor_dataset(
+                csv_file, smiles_column, descriptor_column, min_label_frequency, max_smiles_length
             )
         else:
             # TDC任务
@@ -401,9 +411,13 @@ class PropertyTrainer:
             task_name)
 
         # 设置模型
-        # 这里需要从数据集构建器获取词汇表大小
-        # 简化处理，假设已知词汇表大小
-        num_tokens = 100  # 这应该从符号字典获取
+        # 从数据集构建器获取词汇表大小
+        num_tokens = self.dataset_builder.symbol_dict.vocab_size
+        if num_tokens == 0:
+            # 如果符号字典为空，使用默认大小
+            num_tokens = 100
+            print(f"警告: 符号字典为空，使用默认词汇表大小: {num_tokens}")
+
         self.setup_model(
             num_tokens, task_info['num_labels'], task_info['task_type'])
 
@@ -415,6 +429,11 @@ class PropertyTrainer:
                 freeze_encoder=self.config.freeze_encoder,
                 unfreeze_last_layers=self.config.unfreeze_last_layers
             )
+            # 打印模型信息
+        model_info = self.model.get_model_info()
+        print(f"模型信息:")
+        for key, value in model_info.items():
+            print(f"  {key}: {value}")
 
         # 设置优化器
         self.setup_optimizer()
@@ -456,6 +475,15 @@ class PropertyTrainer:
                 print(f"  Val Acc: {val_metrics.get('accuracy', 0):.4f}")
                 if 'auc' in val_metrics:
                     print(f"  Val AUC: {val_metrics['auc']:.4f}")
+                if 'f1_macro' in train_metrics:
+                    print(f"  Train F1-Macro: {train_metrics['f1_macro']:.4f}")
+                if 'f1_macro' in val_metrics:
+                    print(f"  Val F1-Macro: {val_metrics['f1_macro']:.4f}")
+                if 'auc_macro' in train_metrics:
+                    print(
+                        f"  Train AUC-Macro: {train_metrics['auc_macro']:.4f}")
+                if 'auc_macro' in val_metrics:
+                    print(f"  Val AUC-Macro: {val_metrics['auc_macro']:.4f}")
             else:
                 print(f"  Train MSE: {train_metrics.get('mse', 0):.4f}")
                 print(f"  Val MSE: {val_metrics.get('mse', 0):.4f}")

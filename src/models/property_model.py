@@ -7,6 +7,8 @@
 3. 迁移学习支持
 """
 
+from sklearn.metrics import f1_score, roc_auc_score  # 新增的导入
+from typing import Dict
 import torch
 import torch.nn as nn
 from typing import Optional, Dict, List
@@ -250,8 +252,11 @@ class PropertyLoss(nn.Module):
             return self.criterion(predictions, targets.float())
 
 
-def calculate_metrics(predictions: torch.Tensor, targets: torch.Tensor,
-                      task_type: str = 'classification') -> Dict[str, float]:
+def calculate_metrics(
+    predictions: torch.Tensor,
+    targets: torch.Tensor,
+    task_type: str = 'classification'
+) -> Dict[str, float]:
     """计算评估指标
 
     Args:
@@ -265,23 +270,51 @@ def calculate_metrics(predictions: torch.Tensor, targets: torch.Tensor,
     metrics = {}
 
     if task_type == 'classification':
-        # 分类指标
         if predictions.size(1) == 1:
             # 二分类
             pred_labels = (predictions > 0.5).float()
             accuracy = (pred_labels.squeeze() ==
                         targets.float().squeeze()).float().mean()
             metrics['accuracy'] = accuracy.item()
+
+            # 二分类的F1和AUC（可选添加）
+            try:
+                metrics['f1'] = f1_score(targets.cpu(), pred_labels.cpu())
+                metrics['auc'] = roc_auc_score(
+                    targets.cpu(), predictions.squeeze().cpu())
+            except ValueError:  # 处理全0或全1的标签
+                pass
+
         else:
-            # 多分类
+            # 多分类或多标签
             pred_labels = torch.argmax(predictions, dim=1)
             if targets.dim() > 1 and targets.size(1) > 1:
-                # 多标签分类
-                pred_binary = (predictions > 0.5).float()
+                # ============== 多标签分类 ==============
+                print(predictions.max())
+                pred_binary = (predictions > 0.01).float()
                 accuracy = (pred_binary == targets.float()).float().mean()
                 metrics['accuracy'] = accuracy.item()
+
+                # 计算F1-macro和AUC-macro
+                try:
+                    # F1-macro（需要将标签和预测转为numpy）
+                    metrics['f1_macro'] = f1_score(
+                        targets.cpu().numpy(),
+                        pred_binary.cpu().numpy(),
+                        average='macro'
+                    )
+
+                    # AUC-macro（需确保预测值是概率值）
+                    metrics['auc_macro'] = roc_auc_score(
+                        targets.cpu().numpy(),
+                        predictions.cpu().numpy(),
+                        average='macro'
+                    )
+                except ValueError:  # 处理某些标签全0或全1的情况
+                    pass
+
             else:
-                # 多分类
+                # 多分类（非多标签）
                 accuracy = (pred_labels == targets.long().squeeze()
                             ).float().mean()
                 metrics['accuracy'] = accuracy.item()
@@ -290,7 +323,6 @@ def calculate_metrics(predictions: torch.Tensor, targets: torch.Tensor,
         # 回归指标
         mse = nn.functional.mse_loss(predictions, targets.float())
         mae = nn.functional.l1_loss(predictions, targets.float())
-
         metrics['mse'] = mse.item()
         metrics['mae'] = mae.item()
         metrics['rmse'] = torch.sqrt(mse).item()

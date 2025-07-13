@@ -96,11 +96,52 @@ def run_finetune(args):
         pass
 
     # 数据配置
-    data_config = {
-        'odorant_file': args.odorant_file,
-        'odorless_file': args.odorless_file,
-        'tdc_data_path': args.tdc_data_path
-    }
+    data_config = {}
+
+    # 根据任务类型配置数据
+    if args.task == 'multi_label_odor':
+        # 多标签CSV任务
+        if not args.csv_file:
+            print("错误: multi_label_odor任务需要提供--csv_file参数")
+            return
+
+        data_config.update({
+            'csv_file': args.csv_file,
+            'smiles_column': args.smiles_column,
+            'descriptor_column': 'descriptors',
+            'min_label_frequency': args.min_label_frequency,
+            'max_smiles_length': args.max_smiles_length
+        })
+
+        print(f"多标签CSV配置:")
+        print(f"  CSV文件: {args.csv_file}")
+        print(f"  SMILES列: {args.smiles_column}")
+        print(f"  最小标签频次: {args.min_label_frequency}")
+        print(f"  最大SMILES长度: {args.max_smiles_length}")
+
+    elif args.task == 'odor':
+        # 传统odor任务
+        if not args.odorant_file or not args.odorless_file:
+            print("错误: odor任务需要提供--odorant_file和--odorless_file参数")
+            return
+
+        data_config.update({
+            'odorant_file': args.odorant_file,
+            'odorless_file': args.odorless_file
+        })
+
+        print(f"传统odor配置:")
+        print(f"  有气味文件: {args.odorant_file}")
+        print(f"  无气味文件: {args.odorless_file}")
+
+    else:
+        # TDC任务或其他
+        data_config.update({
+            'tdc_data_path': args.tdc_data_path
+        })
+
+        print(f"TDC任务配置:")
+        print(f"  TDC数据路径: {args.tdc_data_path}")
 
     # 创建训练器
     trainer = PropertyTrainer(
@@ -128,9 +169,58 @@ def run_inference(args):
     print("运行推理")
     print("=" * 60)
 
-    # 这里可以添加推理逻辑
-    # 加载模型，处理输入SMILES，输出预测结果
-    print("推理功能待实现...")
+    from src.inference.inference_engine import InferenceEngine
+
+    try:
+        # 初始化推理引擎
+        print(f"初始化推理引擎...")
+        engine = InferenceEngine(args.model_path, args.device)
+
+        # 打印模型信息
+        model_info = engine.get_model_info()
+        print(f"\n模型信息:")
+        for key, value in model_info.items():
+            if key == 'labels' and len(value) > 10:
+                print(f"  {key}: {len(value)} 个标签 (前10个: {value[:10]})")
+            else:
+                print(f"  {key}: {value}")
+
+        # 执行推理
+        if args.input_file and args.output_file:
+            # 从文件批量推理
+            print(f"\n开始批量推理...")
+            engine.predict_from_file(
+                args.input_file,
+                args.output_file,
+                batch_size=getattr(args, 'batch_size', 32),
+                probability_threshold=getattr(args, 'threshold', 0.5)
+            )
+        elif hasattr(args, 'smiles') and args.smiles:
+            # 单个SMILES推理
+            print(f"\n对单个SMILES进行推理: {args.smiles}")
+            result = engine.predict_single(args.smiles)
+
+            print(f"\n推理结果:")
+            print(f"  SMILES: {result['smiles']}")
+            print(f"  有效: {result['valid']}")
+
+            if result['valid'] and 'predicted_labels' in result:
+                print(f"  预测标签:")
+                for label, info in result['predicted_labels'].items():
+                    if isinstance(info, dict):
+                        pred = info['predicted']
+                        prob = info['probability']
+                        print(
+                            f"    {label}: {'是' if pred else '否'} (概率: {prob:.3f})")
+                    else:
+                        print(f"    {label}: {'是' if info else '否'}")
+        else:
+            print("错误: 请提供输入文件和输出文件，或者单个SMILES字符串")
+
+    except Exception as e:
+        print(f"推理过程中出现错误: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 def main():
@@ -163,15 +253,29 @@ def main():
     # 微调命令
     finetune_parser = subparsers.add_parser('finetune', help='运行微调')
     finetune_parser.add_argument('--task', type=str, required=True,
-                                 help='任务名称 (odor, BBBP, ClinTox, 等)')
+                                 help='任务名称 (odor, multi_label_odor, BBBP, ClinTox, 等)')
     finetune_parser.add_argument('--pretrain_model', type=str, default=None,
                                  help='预训练模型路径')
     finetune_parser.add_argument('--save_dir', type=str, required=True,
                                  help='模型保存目录')
+
+    # 传统odor任务参数
     finetune_parser.add_argument('--odorant_file', type=str, default=None,
-                                 help='有气味分子文件路径')
+                                 help='有气味分子文件路径 (用于odor任务)')
     finetune_parser.add_argument('--odorless_file', type=str, default=None,
-                                 help='无气味分子文件路径')
+                                 help='无气味分子文件路径 (用于odor任务)')
+
+    # 多标签CSV任务参数
+    finetune_parser.add_argument('--csv_file', type=str, default=None,
+                                 help='多标签CSV文件路径 (用于multi_label_odor任务)')
+    finetune_parser.add_argument('--smiles_column', type=str, default='nonStereoSMILES',
+                                 help='SMILES列名')
+    finetune_parser.add_argument('--min_label_frequency', type=int, default=5,
+                                 help='最小标签频次')
+    finetune_parser.add_argument('--max_smiles_length', type=int, default=200,
+                                 help='最大SMILES长度')
+
+    # 其他参数
     finetune_parser.add_argument('--tdc_data_path', type=str, default=None,
                                  help='TDC数据路径')
     finetune_parser.add_argument('--config_file', type=str, default=None,
