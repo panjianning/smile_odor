@@ -84,16 +84,15 @@ def example_pretrain():
         ["data/sample_smiles.txt"], max_samples=None
     )
 
-    print(f"smiles_list = {smiles_list}")
-
-    print(f"symbol_dict = {symbol_dict}")
+    # print(f"smiles_list = {smiles_list}")
+    # print(f"symbol_dict = {symbol_dict}")
 
     # 创建预训练数据对
     canonical_smiles, target_smiles = builder.create_pretrain_pairs(
         smiles_list)
 
-    print(f"canonical_smiles = {canonical_smiles}")
-    print(f"target_smiles = {target_smiles}")
+    # print(f"canonical_smiles = {canonical_smiles}")
+    # print(f"target_smiles = {target_smiles}")
 
     # 保存数据
     os.makedirs("data/pretrain", exist_ok=True)
@@ -104,8 +103,6 @@ def example_pretrain():
     print(f"预训练数据构建完成!")
     print(f"- 样本数量: {len(smiles_list)}")
     print(f"- 词汇表大小: {symbol_dict.vocab_size}")
-
-    return
 
     # 2. 预训练模型
     print("\n2. 开始预训练...")
@@ -195,8 +192,6 @@ def main():
 
     # 预训练示例
     example_pretrain()
-
-    return
 
     # 微调示例
     example_finetune()

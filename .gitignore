@@ -1,3 +1,7 @@
 models/*
 data/*
 __pycache__
+# 但不忽略特定的文件
+!/data/Multi-Labelled_Smiles_Odors_dataset.csv
+# 但不忽略特定的文件
+!/data/Multi-Labelled_Smiles_Odors_dataset_example.csv
