@@ -104,7 +104,7 @@ pip install tdc  # 可选，用于TDC数据集
 #### 生成smiles.txt
 
 ```bash
-python prepare
+python prepare.py
 ```
 
 #### 生成symbol_dict等
